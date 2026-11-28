@@ -39,6 +39,20 @@
       .hero::after { top: auto; height: 40px; background: linear-gradient(0deg,#080f18,transparent) }
       .intro { padding-block: 40px 20px }
     }
+      .layout{display:grid;gap:18px;grid-template-columns:minmax(220px,.64fr) minmax(0,1.36fr);align-items:start}
+    .workspace{padding-block:20px 60px}
+    .check{background:var(--gold);color:var(--navy)}
+    .panel{background:var(--panel);border:1px solid var(--border);border-top:2px solid var(--gold);padding:clamp(17px,4vw,29px)}
+    .fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}
+    .full{grid-column:1/-1}
+    label{display:grid;gap:5px;font-weight:650}
+    label small,.hint{color:var(--muted);font-size:.82rem;font-weight:400}
+    input,select{width:100%;color:var(--ink);background:var(--navy);border:1px solid #8395a7;padding:10px;font:inherit;border-radius:2px}
+    .check{margin-top:20px;border:1px solid var(--gold);padding:10px 16px;font-weight:700}
+    #member-submissions .panel{scroll-margin-top:1rem}
+    @media(max-width:700px){.layout,.fields{grid-template-columns:1fr}}
+  #member-submissions{--panel:#101c2a;--border:#e9c58155;--ink:#f9edd9;--muted:#bfccda;--navy:#080f18;--gold:#e9c581}
+      #back-home{color:inherit;text-decoration:none} #back-home:hover{text-decoration:underline}
   </style>
 </head>
 <body>
@@ -77,7 +91,7 @@
     </section>
     </div>
   </main>
-  <footer>JSFrancisLegacy</footer>
+  <footer><a id="back-home" href="https://www.jsfrancislegacy.com/">← Back to JSFrancisLegacy</a></footer>
   <script>
     const element = id => document.getElementById(id);
     const emailForm = element('email-form');
@@ -93,9 +107,10 @@
       status.textContent = message;
     }
 
-    async function call(method, email, value) {
+    async function call(method, email, value, payload) {
       const body = new URLSearchParams({ action: method, email });
       if (value !== undefined) body.set('value', value);
+      if (payload !== undefined) body.set('payload', JSON.stringify(payload));
       const response = await fetch('https://script.google.com/macros/s/AKfycbxMgcp_C5YnMNjaUoiujWlIaLaMuKLrjTAaQnr4Zwu0rUjb1vOvt-y5SsG4-6g-0Juj/exec', {
         method: 'POST', body, credentials: 'omit', referrerPolicy: 'no-referrer',
         signal: AbortSignal.timeout(25000)
@@ -135,6 +150,7 @@
         if (!member) { show(emailForm, 'Please request a new sign-in code.'); return; }
         element('greeting').textContent = 'Welcome, ' + member.firstName + '.';
         show(welcome);
+        element('member-submissions').hidden = false;
         element('greeting').focus();
         expiryTimer = setTimeout(() => resetSession('Your session expired. Sign in again.'), 2 * 60 * 60 * 1000);
       });
@@ -142,6 +158,8 @@
 
     function resetSession(message = '') {
       clearTimeout(expiryTimer);
+      element('member-submissions').hidden = true;
+      document.dispatchEvent(new Event('wellness-signed-out'));
       session = '';
       address = '';
       element('greeting').textContent = '';
@@ -157,6 +175,152 @@
       try { await call('signOut', ...prior); }
       catch { status.textContent = 'This page has signed out. The server session will expire automatically.'; }
     });
+  </script>
+
+  <section id="member-submissions" class="shell workspace" aria-label="Submissions" hidden>
+    <div class="layout">
+        <section class="panel" aria-labelledby="choose-title">
+          <h2 id="choose-title">Submission type</h2>
+          <label for="kind">What are you submitting?
+          <select id="kind">
+            <option value="profile">Profile submission</option><option value="athena">Athena submission</option><option value="medical">Medical ID</option>
+          </select></label>
+        </section>
+        <section class="panel" aria-labelledby="form-title">
+          <h2 id="form-title">Profile submission</h2>
+          <p class="hint" id="field-note"></p>
+          <form id="submission">
+            <div class="fields" id="fields"></div>
+            <button class="check">Save submission</button>
+            <button type="button" class="secondary" id="load-submissions">Show shared submissions</button>
+            <output id="submission-status" aria-live="polite"></output>
+          </form>
+    <div id="saved-submissions" aria-live="polite"></div>
+    </section></div>
+  </section>
+    <template id="provider-fields">
+    <label class="full">Category<select name="Category" required>
+      <option value="">Select a category</option><option>Prescriptions</option><option>Eye</option><option>Medical</option><option>Dentist</option><option>Other</option>
+    </select></label>
+    <label>Doctor’s name<input name="Doctor’s name" maxlength="100" required></label>
+    <label>Doctor’s company or practice<input name="Doctor’s company or practice" maxlength="120" required></label>
+    <label class="full">Address<input name="Address" placeholder="Street, city, state, ZIP" maxlength="200" required></label>
+    <label>Phone number<input name="Phone number" type="tel" inputmode="tel" data-number required><small>10 digits</small></label>
+    <label>Fax number <small>Optional · 10 digits</small><input name="Fax number" type="tel" inputmode="tel" data-number></label>
+  </template>
+  <template id="medical-fields">
+    <label>Holder’s name<input name="Holder’s name" maxlength="100" required></label>
+    <label>Company name<input name="Company name" maxlength="120" required></label>
+    <label>Group ID<input name="Group ID" maxlength="100" required></label>
+    <label>Member number / ID<input name="Member number / ID" maxlength="100" required></label>
+    <label class="full">Address<input name="Address" placeholder="Street, city, state, ZIP" maxlength="200" required></label>
+    <label>Phone number<input name="Phone number" type="tel" inputmode="tel" data-number><small>10 digits</small></label>
+    <label>Fax number<input name="Fax number" type="tel" inputmode="tel" data-number><small>10 digits</small></label>
+  </template>
+  <script>
+    (() => {
+        const byId = id => document.getElementById(id);
+    const kind = byId('kind');
+    const form = byId('submission');
+    const fields = byId('fields');
+    const status = byId('submission-status');
+    const drafts = {};
+    let active;
+
+    function showFields() {
+      if (active) drafts[active] = Object.fromEntries(new FormData(form));
+      active = kind.value;
+      const medical = active === 'medical';
+      fields.replaceChildren(byId(medical ? 'medical-fields' : 'provider-fields').content.cloneNode(true));
+      if (active === 'athena') {
+        const categories = fields.querySelector('select');
+        categories.add(new Option('Grooming'), 1);
+        categories.add(new Option('Vet'), 1);
+      }
+      for (const control of fields.querySelectorAll('input,select')) control.value = drafts[active]?.[control.name] || '';
+      byId('form-title').textContent = kind.selectedOptions[0].textContent;
+      byId('field-note').textContent = medical ? 'All other fields are required. Enter a phone or fax number, or both.' : 'All fields are required except fax.';
+      status.textContent = '';
+    }
+
+    function normalNumber(value) {
+      return value.trim().replace(/[(). -]/g, '');
+    }
+    let requestId;
+    let submissionGeneration = 0;
+    const saved = byId('saved-submissions');
+    const keys = {'Category':'category','Doctor’s name':'doctor','Doctor’s company or practice':'company','Company name':'company',
+      'Address':'address','Phone number':'phone','Fax number':'fax','Holder’s name':'holder','Group ID':'groupId','Member number / ID':'memberId'};
+    const labels = {profile:'Profile submission',athena:'Athena submission',medical:'Medical ID'};
+    const recordLabels = {category:'Category',doctor:'Doctor',company:'Company',address:'Address',phone:'Phone',fax:'Fax',holder:'Holder',groupId:'Group ID',memberId:'Member number / ID'};
+    kind.addEventListener('change', () => { requestId = undefined; showFields(); });
+    form.addEventListener('input', () => {
+      requestId = undefined;
+      for (const input of fields.querySelectorAll('input')) input.setCustomValidity('');
+      status.textContent = '';
+    });
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!session) return;
+      const numbers = [...fields.querySelectorAll('[data-number]')];
+      for (const input of fields.querySelectorAll('input[required]')) if (!input.value.trim()) input.setCustomValidity('Enter a value for this field.');
+      for (const input of numbers) if (input.value && !/^\d{10}$/.test(normalNumber(input.value))) input.setCustomValidity('Enter exactly 10 digits, with no country code.');
+      if (active === 'medical' && numbers.every(input => !input.value.trim())) numbers[0].setCustomValidity('Enter a phone number or a fax number.');
+      if (!form.reportValidity()) return;
+      requestId ||= crypto.randomUUID();
+      const payload = { id: requestId, type: active };
+      for (const [name, value] of new FormData(form)) payload[keys[name]] = value;
+      const controls = [...form.querySelectorAll('input,select,button'),kind];
+      const generation = submissionGeneration;
+      controls.forEach(control => control.disabled = true);
+      try {
+        await call('saveSubmission', address, session, payload);
+        if (generation !== submissionGeneration) return;
+        status.textContent = 'Submission saved.';
+        requestId = undefined;
+        form.reset();
+        saved.replaceChildren();
+      } catch {
+        if (generation === submissionGeneration) status.textContent = 'Could not save the submission. Try again, or sign in again if your session expired.';
+      } finally { controls.forEach(control => control.disabled = false); }
+    });
+    byId('load-submissions').addEventListener('click', async () => {
+      if (!session) return;
+      const generation = submissionGeneration;
+      try {
+        const records = await call('listSubmissions', address, session);
+        if (generation !== submissionGeneration) return;
+        saved.replaceChildren();
+        if (!records.length) { status.textContent = 'There are no shared submissions yet.'; return; }
+        status.textContent = '';
+        for (const record of records) {
+          const detail = document.createElement('details');
+          const title = document.createElement('summary');
+          title.textContent = (labels[record.type] || 'Submission') + ' · ' + record.date.slice(0,10);
+          detail.append(title);
+          for (const [key, label] of Object.entries(recordLabels)) {
+            if (!record[key]) continue;
+            const item = document.createElement('p');
+            item.textContent = label + ' — ' + record[key];
+            detail.append(item);
+          }
+          saved.append(detail);
+        }
+      } catch {
+        if (generation === submissionGeneration) status.textContent = 'Could not load shared submissions. Sign in again and try again.';
+      }
+    });
+    document.addEventListener('wellness-signed-out', () => {
+      submissionGeneration += 1;
+      for (const key of Object.keys(drafts)) delete drafts[key];
+      requestId = undefined;
+      active = undefined;
+      kind.value = 'profile';
+      saved.replaceChildren();
+      showFields();
+    });
+    showFields();
+    })();
   </script>
 </body>
 </html>
